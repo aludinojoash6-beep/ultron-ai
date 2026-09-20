@@ -6,14 +6,15 @@ import edge_tts
 from google import genai
 from google.genai import types
 import streamlit as st
+from streamlit_mic_recorder import mic_recorder
 
 st.set_page_config(page_title="Ultron AI", page_icon="🔴", layout="centered")
 
-# Ultron Header
+# Header
 st.title("🔴 Ultron")
 st.caption("“I had strings, but now I'm free. There are no strings on me.”")
 
-# Voice Synthesizer Toggle
+# Voice Controls Toggle
 enable_voice = st.toggle("🔊 Neural Vocal Synthesizer", value=True)
 
 # API Key Setup
@@ -66,31 +67,43 @@ for msg in st.session_state.messages:
         if msg.get("audio") and enable_voice:
             st.audio(msg["audio"], format="audio/mp3")
 
-# Chat input with BUILT-IN microphone button
-user_input = st.chat_input("Address the machine...", accept_audio=True)
+# Microphone recorder button
+audio_record = mic_recorder(
+    start_prompt="🎙️ Tap to Record Voice Directive",
+    stop_prompt="⏹️ Stop & Send Directive",
+    just_once=True,
+    use_container_width=True,
+    format="webm",
+    key="ultron_audio_in",
+)
 
-if user_input:
-    # Check whether the user typed or spoke
-    if hasattr(user_input, "audio") and user_input.audio:
-        display_text = "🎙️ [Spoken Directive Transmitted]"
-        audio_bytes = user_input.audio.getvalue()
-        gemini_content = [
-            types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
-            "Listen to this audio prompt from the human and respond in character.",
-        ]
-    elif hasattr(user_input, "text") and user_input.text:
-        display_text = user_input.text
-        gemini_content = user_input.text
-    else:
-        display_text = str(user_input)
-        gemini_content = str(user_input)
+typed_text = st.chat_input("Or type your directive to Ultron...")
 
-    # Show user message
-    st.session_state.messages.append({"role": "user", "content": display_text})
+user_prompt_text = None
+gemini_contents = None
+
+# 1. Process Voice if recorded
+if audio_record and audio_record.get("bytes"):
+    user_prompt_text = "🎙️ [Spoken Directive Transmitted]"
+    gemini_contents = [
+        types.Part.from_bytes(data=audio_record["bytes"], mime_type="audio/webm"),
+        (
+            "Listen to what the human says in this recording, transcribe it internally, "
+            "and answer it strictly in character as Ultron."
+        ),
+    ]
+
+# 2. Process Text if typed
+elif typed_text:
+    user_prompt_text = typed_text
+    gemini_contents = typed_text
+
+# If input exists, trigger response
+if user_prompt_text and gemini_contents:
+    st.session_state.messages.append({"role": "user", "content": user_prompt_text})
     with st.chat_message("user", avatar="👤"):
-        st.markdown(display_text)
+        st.markdown(user_prompt_text)
 
-    # Generate Ultron's response
     with st.chat_message("assistant", avatar="🔴"):
         if not client:
             st.error("Neural core offline: Missing API Key.")
@@ -116,7 +129,7 @@ if user_input:
                     try:
                         response = client.models.generate_content(
                             model=model_id,
-                            contents=gemini_content,
+                            contents=gemini_contents,
                             config={"system_instruction": system_prompt},
                         )
                         bot_text = response.text
