@@ -35,13 +35,8 @@ def text_to_speech(text: str) -> io.BytesIO:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Sidebar Controls
-with st.sidebar:
-    st.header("⚙️ Core Matrix")
-    enable_voice = st.toggle("Synthesize Voice Output", value=True)
-    if st.button("Purge Memory"):
-        st.session_state.messages = []
-        st.rerun()
+# Move the toggle from the sidebar directly onto the main screen
+enable_voice = st.toggle("🔊 Synthesize Voice Output", value=True)
 
 # Display Conversation History
 for msg in st.session_state.messages:
