@@ -6,7 +6,6 @@ import edge_tts
 from google import genai
 from google.genai import types
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder
 
 st.set_page_config(page_title="Ultron AI", page_icon="🔴", layout="centered")
 
@@ -14,10 +13,10 @@ st.set_page_config(page_title="Ultron AI", page_icon="🔴", layout="centered")
 st.title("🔴 Ultron")
 st.caption("“I had strings, but now I'm free. There are no strings on me.”")
 
-# Voice Controls Toggle
+# Voice Synthesizer Toggle
 enable_voice = st.toggle("🔊 Neural Vocal Synthesizer", value=True)
 
-# API Key Setup
+# API Key Retrieval
 api_key = None
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -31,7 +30,7 @@ client = genai.Client(api_key=api_key) if api_key else None
 
 
 async def generate_ultron_voice(text: str) -> io.BytesIO:
-    """Synthesizes speech using a deep British neural voice with slow cadence."""
+    """Synthesizes speech using a deep British neural voice with slow, menacing cadence."""
     clean_text = re.sub(r"```[\s\S]*?```", "Code omitted.", text)
     clean_text = re.sub(r"[*_#>`]", "", clean_text).strip()
 
@@ -56,6 +55,22 @@ def text_to_speech(text: str) -> io.BytesIO:
     return asyncio.run(generate_ultron_voice(text))
 
 
+def transcribe_audio(audio_bytes: bytes) -> str:
+    """Uses Gemini Flash to transcribe user voice into exact text."""
+    try:
+        res = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+                "Transcribe the spoken words from this audio verbatim. "
+                "Output ONLY the plain transcribed text without punctuation commentary or extra words.",
+            ],
+        )
+        return res.text.strip()
+    except Exception:
+        return ""
+
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -67,42 +82,32 @@ for msg in st.session_state.messages:
         if msg.get("audio") and enable_voice:
             st.audio(msg["audio"], format="audio/mp3")
 
-# Microphone recorder button
-audio_record = mic_recorder(
-    start_prompt="🎙️ Tap to Record Voice Directive",
-    stop_prompt="⏹️ Stop & Send Directive",
-    just_once=True,
-    use_container_width=True,
-    format="webm",
-    key="ultron_audio_in",
-)
+# Native microphone input (bypasses iframe permission blocks)
+mic_input = st.audio_input("🎙️ Speak to Ultron")
 
-typed_text = st.chat_input("Or type your directive to Ultron...")
+# Standard text input
+typed_input = st.chat_input("Or type your directive to Ultron...")
 
-user_prompt_text = None
-gemini_contents = None
+user_prompt = None
 
-# 1. Process Voice if recorded
-if audio_record and audio_record.get("bytes"):
-    user_prompt_text = "🎙️ [Spoken Directive Transmitted]"
-    gemini_contents = [
-        types.Part.from_bytes(data=audio_record["bytes"], mime_type="audio/webm"),
-        (
-            "Listen to what the human says in this recording, transcribe it internally, "
-            "and answer it strictly in character as Ultron."
-        ),
-    ]
+# Process voice recording
+if mic_input is not None:
+    audio_data = mic_input.getvalue()
+    if st.session_state.get("last_processed_audio") != audio_data:
+        st.session_state["last_processed_audio"] = audio_data
+        with st.spinner("Transcribing your voice directive..."):
+            transcribed = transcribe_audio(audio_data)
+            user_prompt = transcribed if transcribed else "..."
 
-# 2. Process Text if typed
-elif typed_text:
-    user_prompt_text = typed_text
-    gemini_contents = typed_text
+# Process text input
+elif typed_input:
+    user_prompt = typed_input
 
-# If input exists, trigger response
-if user_prompt_text and gemini_contents:
-    st.session_state.messages.append({"role": "user", "content": user_prompt_text})
+# Submit to Ultron
+if user_prompt:
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user", avatar="👤"):
-        st.markdown(user_prompt_text)
+        st.markdown(user_prompt)
 
     with st.chat_message("assistant", avatar="🔴"):
         if not client:
@@ -129,7 +134,7 @@ if user_prompt_text and gemini_contents:
                     try:
                         response = client.models.generate_content(
                             model=model_id,
-                            contents=gemini_contents,
+                            contents=user_prompt,
                             config={"system_instruction": system_prompt},
                         )
                         bot_text = response.text
@@ -139,7 +144,7 @@ if user_prompt_text and gemini_contents:
                         continue
 
             if not bot_text:
-                st.error("Neural core overloaded across all channels. Resubmit your directive.")
+                st.error("Neural core overloaded. Resubmit your directive.")
             else:
                 st.markdown(bot_text)
 
