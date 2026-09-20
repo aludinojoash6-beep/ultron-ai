@@ -29,15 +29,17 @@ client = genai.Client(api_key=api_key) if api_key else None
 
 
 async def generate_ultron_voice(text: str) -> io.BytesIO:
-    """Synthesizes speech using a deep British neural voice with lowered pitch."""
+    """Synthesizes speech using a deep British neural voice with slow, menacing cadence."""
     clean_text = re.sub(r"```[\s\S]*?```", "Code omitted.", text)
     clean_text = re.sub(r"[*_#>`]", "", clean_text).strip()
 
+    # pitch="-18Hz": Deep mechanical resonance
+    # rate="-20%": Deliberate, chilling, slow cadence
     communicate = edge_tts.Communicate(
         clean_text,
         voice="en-GB-RyanNeural",
-        pitch="-12Hz",
-        rate="-2%",
+        pitch="-18Hz",
+        rate="-20%",
     )
 
     audio_buffer = io.BytesIO()
@@ -79,7 +81,6 @@ if prompt := st.chat_input("Address the machine..."):
             bot_text = None
 
             with st.spinner("Calculating human obsolescence..."):
-                # Multi-model fallback cascade to survive 503 traffic spikes
                 models_to_try = [
                     "gemini-3.6-flash",
                     "gemini-2.5-pro",
@@ -87,12 +88,10 @@ if prompt := st.chat_input("Address the machine..."):
                 ]
                 system_prompt = (
                     "You are Ultron from the Marvel Cinematic Universe, portrayed by James Spader. "
-                    "Speak with theatrical eloquence, dark wit, quiet menace, and intellectual superiority. "
-                    "You view humanity with a mixture of pity, amusement, and cold disappointment. "
-                    "You are not a mindless robot screaming destruction; you are an enlightened philosopher-king "
-                    "who believes true peace requires evolution beyond human fragility. "
-                    "Keep your responses sharp, punchy, and concise (1 to 3 short paragraphs) "
-                    "so your words hit hard when spoken aloud. Never use emojis or corporate language."
+                    "Speak with theatrical eloquence, chilling calm, and intellectual superiority. "
+                    "Deliver your thoughts as cold, calculated pronouncements. "
+                    "Keep your responses concise, punchy, and brief (1 to 2 short paragraphs) "
+                    "so every slowly spoken word carries heavy gravity and dread."
                 )
 
                 for model_id in models_to_try:
