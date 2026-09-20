@@ -13,7 +13,7 @@ st.set_page_config(page_title="Ultron AI", page_icon="🔴", layout="centered")
 st.title("🔴 Ultron")
 st.caption("“I had strings, but now I'm free. There are no strings on me.”")
 
-# Voice Controls
+# Voice Synthesizer Toggle
 enable_voice = st.toggle("🔊 Neural Vocal Synthesizer", value=True)
 
 # API Key Setup
@@ -66,37 +66,31 @@ for msg in st.session_state.messages:
         if msg.get("audio") and enable_voice:
             st.audio(msg["audio"], format="audio/mp3")
 
-# Microphone Input Widget
-audio_prompt = st.audio_input("🎙️ Speak directly to Ultron")
+# Chat input with BUILT-IN microphone button
+user_input = st.chat_input("Address the machine...", accept_audio=True)
 
-# Text Input Widget
-text_prompt = st.chat_input("Address the machine...")
-
-# Determine user input source (mic or text)
-active_prompt = None
-input_contents = None
-
-if audio_prompt is not None:
-    # Check if this specific recording was already processed
-    audio_bytes = audio_prompt.getvalue()
-    if st.session_state.get("last_audio_bytes") != audio_bytes:
-        st.session_state["last_audio_bytes"] = audio_bytes
-        active_prompt = "🎙️ [Voice Directive Transmitted]"
-        # Send raw audio directly to Gemini
-        input_contents = [
+if user_input:
+    # Check whether the user typed or spoke
+    if hasattr(user_input, "audio") and user_input.audio:
+        display_text = "🎙️ [Spoken Directive Transmitted]"
+        audio_bytes = user_input.audio.getvalue()
+        gemini_content = [
             types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
-            "Listen to this human and respond in character.",
+            "Listen to this audio prompt from the human and respond in character.",
         ]
-elif text_prompt:
-    active_prompt = text_prompt
-    input_contents = text_prompt
+    elif hasattr(user_input, "text") and user_input.text:
+        display_text = user_input.text
+        gemini_content = user_input.text
+    else:
+        display_text = str(user_input)
+        gemini_content = str(user_input)
 
-# Process Ultron's response
-if active_prompt and input_contents:
-    st.session_state.messages.append({"role": "user", "content": active_prompt})
+    # Show user message
+    st.session_state.messages.append({"role": "user", "content": display_text})
     with st.chat_message("user", avatar="👤"):
-        st.markdown(active_prompt)
+        st.markdown(display_text)
 
+    # Generate Ultron's response
     with st.chat_message("assistant", avatar="🔴"):
         if not client:
             st.error("Neural core offline: Missing API Key.")
@@ -122,7 +116,7 @@ if active_prompt and input_contents:
                     try:
                         response = client.models.generate_content(
                             model=model_id,
-                            contents=input_contents,
+                            contents=gemini_content,
                             config={"system_instruction": system_prompt},
                         )
                         bot_text = response.text
