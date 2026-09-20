@@ -4,18 +4,19 @@ import os
 import re
 import edge_tts
 from google import genai
+from google.genai import types
 import streamlit as st
 
 st.set_page_config(page_title="Ultron AI", page_icon="🔴", layout="centered")
 
-# Ultron Interface Header
+# Ultron Header
 st.title("🔴 Ultron")
 st.caption("“I had strings, but now I'm free. There are no strings on me.”")
 
 # Voice Controls
 enable_voice = st.toggle("🔊 Neural Vocal Synthesizer", value=True)
 
-# API Key Handling
+# API Key Setup
 api_key = None
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -29,12 +30,10 @@ client = genai.Client(api_key=api_key) if api_key else None
 
 
 async def generate_ultron_voice(text: str) -> io.BytesIO:
-    """Synthesizes speech using a deep British neural voice with slow, menacing cadence."""
+    """Synthesizes speech using a deep British neural voice with slow cadence."""
     clean_text = re.sub(r"```[\s\S]*?```", "Code omitted.", text)
     clean_text = re.sub(r"[*_#>`]", "", clean_text).strip()
 
-    # pitch="-18Hz": Deep mechanical resonance
-    # rate="-20%": Deliberate, chilling, slow cadence
     communicate = edge_tts.Communicate(
         clean_text,
         voice="en-GB-RyanNeural",
@@ -67,11 +66,36 @@ for msg in st.session_state.messages:
         if msg.get("audio") and enable_voice:
             st.audio(msg["audio"], format="audio/mp3")
 
-# User Input & Model Processing
-if prompt := st.chat_input("Address the machine..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Microphone Input Widget
+audio_prompt = st.audio_input("🎙️ Speak directly to Ultron")
+
+# Text Input Widget
+text_prompt = st.chat_input("Address the machine...")
+
+# Determine user input source (mic or text)
+active_prompt = None
+input_contents = None
+
+if audio_prompt is not None:
+    # Check if this specific recording was already processed
+    audio_bytes = audio_prompt.getvalue()
+    if st.session_state.get("last_audio_bytes") != audio_bytes:
+        st.session_state["last_audio_bytes"] = audio_bytes
+        active_prompt = "🎙️ [Voice Directive Transmitted]"
+        # Send raw audio directly to Gemini
+        input_contents = [
+            types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+            "Listen to this human and respond in character.",
+        ]
+elif text_prompt:
+    active_prompt = text_prompt
+    input_contents = text_prompt
+
+# Process Ultron's response
+if active_prompt and input_contents:
+    st.session_state.messages.append({"role": "user", "content": active_prompt})
     with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
+        st.markdown(active_prompt)
 
     with st.chat_message("assistant", avatar="🔴"):
         if not client:
@@ -98,7 +122,7 @@ if prompt := st.chat_input("Address the machine..."):
                     try:
                         response = client.models.generate_content(
                             model=model_id,
-                            contents=prompt,
+                            contents=input_contents,
                             config={"system_instruction": system_prompt},
                         )
                         bot_text = response.text
